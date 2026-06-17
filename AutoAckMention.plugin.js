@@ -5,6 +5,7 @@
  * @author Priesdelly
  * @authorId 237111626787061760
  * @website https://priesdelly.com
+ * @source https://github.com/priesdelly/BD-AutoAckMention/blob/main/AutoAckMention.plugin.js
  */
 
 const NAME = "AutoAckMention";
