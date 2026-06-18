@@ -1,7 +1,7 @@
 /**
  * @name AutoAckMention
  * @description Auto-clear the mention badge from specific channels only.
- * @version 0.5.0
+ * @version 0.6.0
  * @author Priesdelly
  * @authorId 237111626787061760
  * @website https://priesdelly.com
@@ -60,6 +60,7 @@ module.exports = class AutoAckMention {
     };
     this.modules.dispatcher.subscribe("MESSAGE_CREATE", this.onMessage);
 
+    this.pruneStale();
     this.checkExisting();
     BdApi.Logger.info(NAME, "started");
   }
@@ -109,6 +110,7 @@ module.exports = class AutoAckMention {
       }
     };
 
+    this.pruneStale();
     render();
     return panel;
   }
@@ -143,6 +145,22 @@ module.exports = class AutoAckMention {
     }
   }
 
+  // Drop saved channels that no longer exist (deleted, left guild/DM).
+  // Bails if ChannelStore is unavailable so a failed lookup never wipes the list.
+  // ponytail: an archived/unloaded thread reads as gone too; rare, accept it.
+  pruneStale() {
+    if (!this.modules.channels?.getChannel) return;
+    let changed = false;
+    for (const id of this.targets) {
+      if (!this.modules.channels.getChannel(id)) {
+        this.targets.delete(id);
+        changed = true;
+        log("pruned stale channel", id);
+      }
+    }
+    if (changed) BdApi.Data.save(NAME, "channels", [...this.targets]);
+  }
+
   isMention(channelId, message) {
     const myId = this.getMyId();
     if (message.mention_everyone) return true;
@@ -172,11 +190,17 @@ module.exports = class AutoAckMention {
   }
 
   ackChannel(channelId) {
+    // Skip if nothing left to clear: another device already acked (read state syncs
+    // across sessions) or the channel was read manually during the delay. Avoids the
+    // redundant ack on an already-read channel that can look like self-bot activity.
+    const mentionsLeft = this.modules.readState?.getMentionCount?.(channelId) ?? 0;
+    if (mentionsLeft === 0) return log("skip ack, already read", channelId);
+
     // Discord's CHANNEL_ACK marks the channel read to latest, clearing the mention badge.
     // Resolved by source string, so it may be the function itself or a module exposing .ack.
     const ack = this.modules.ack;
     const fn = typeof ack === "function" ? ack : ack?.ack;
-    log("acking", { channelId, hasAck: typeof fn === "function" });
+    log("acking", { channelId, mentionsLeft, hasAck: typeof fn === "function" });
     fn?.(channelId);
   }
 };
