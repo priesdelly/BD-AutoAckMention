@@ -14,7 +14,7 @@ const ACK_DELAY_MIN_MS = 5_000;
 const ACK_DELAY_MAX_MS = 10_000;
 
 // Flip to true to trace the ack flow in the console; keep false for release.
-const DEBUG = false;
+const DEBUG = true;
 const log = (...a) => DEBUG && BdApi.Logger.info(NAME, ...a);
 
 module.exports = class AutoAckMention {
@@ -43,7 +43,9 @@ module.exports = class AutoAckMention {
 
     this.menuPatch = BdApi.ContextMenu.patch(MENU_ID, (tree, props) => {
       const channel = props?.channel;
-      if (!channel) return;
+      if (!channel) {
+        return;
+      }
       tree.props.children.push(BdApi.ContextMenu.buildItem({
         type: "toggle",
         label: "Auto-Ack Mentions",
@@ -53,10 +55,14 @@ module.exports = class AutoAckMention {
     });
 
     this.onMessage = ({ channelId, message }) => {
-      if (!this.targets.has(channelId)) return;
+      if (!this.targets.has(channelId)) {
+        return;
+      }
       const mention = this.isMention(channelId, message);
       log("MESSAGE_CREATE", { channelId, msgId: message?.id, mention });
-      if (mention) this.scheduleAck(channelId);
+      if (mention) {
+        this.scheduleAck(channelId);
+      }
     };
     this.modules.dispatcher.subscribe("MESSAGE_CREATE", this.onMessage);
 
@@ -127,8 +133,14 @@ module.exports = class AutoAckMention {
 
   // Add/remove a channel from the persisted target list
   toggleChannel(channelId) {
-    if (this.targets.has(channelId)) this.targets.delete(channelId);
-    else this.targets.add(channelId);
+    if (this.targets.has(channelId)) {
+      log("toggleChannel: remove", channelId);
+      this.targets.delete(channelId);
+    } else {
+      log("toggleChannel: add", channelId);
+      this.targets.add(channelId);
+      this.checkExisting();
+    }
     BdApi.Data.save(NAME, "channels", [...this.targets]);
     log("targets updated", [...this.targets]);
   }
@@ -136,12 +148,16 @@ module.exports = class AutoAckMention {
   // Clear existing stale mentions in target channels on plugin start
   checkExisting() {
     const readState = this.modules.readState;
-    if (!readState) return;
+    if (!readState) {
+      return;
+    }
 
     for (const channelId of this.targets) {
       const mentions = readState.getMentionCount?.(channelId) ?? 0;
       log("existing", { channelId, mentions });
-      if (mentions > 0) this.scheduleAck(channelId);
+      if (mentions > 0) {
+        this.scheduleAck(channelId);
+      }
     }
   }
 
@@ -149,7 +165,9 @@ module.exports = class AutoAckMention {
   // Bails if ChannelStore is unavailable so a failed lookup never wipes the list.
   // ponytail: an archived/unloaded thread reads as gone too; rare, accept it.
   pruneStale() {
-    if (!this.modules.channels?.getChannel) return;
+    if (!this.modules.channels?.getChannel) {
+      return;
+    }
     let changed = false;
     for (const id of this.targets) {
       if (!this.modules.channels.getChannel(id)) {
@@ -158,13 +176,19 @@ module.exports = class AutoAckMention {
         log("pruned stale channel", id);
       }
     }
-    if (changed) BdApi.Data.save(NAME, "channels", [...this.targets]);
+    if (changed) {
+      BdApi.Data.save(NAME, "channels", [...this.targets]);
+    }
   }
 
   isMention(channelId, message) {
     const myId = this.getMyId();
-    if (message.mention_everyone) return true;
-    if (message.mentions?.some(u => u.id === myId)) return true;
+    if (message.mention_everyone) {
+      return true;
+    }
+    if (message.mentions?.some(u => u.id === myId)) {
+      return true;
+    }
     const myRoles = this.getMyRoles(channelId);
     return message.mention_roles?.some(r => myRoles.includes(r)) ?? false;
   }
@@ -194,7 +218,9 @@ module.exports = class AutoAckMention {
     // across sessions) or the channel was read manually during the delay. Avoids the
     // redundant ack on an already-read channel that can look like self-bot activity.
     const mentionsLeft = this.modules.readState?.getMentionCount?.(channelId) ?? 0;
-    if (mentionsLeft === 0) return log("skip ack, already read", channelId);
+    if (mentionsLeft === 0) {
+      return log("skip ack, already read", channelId);
+    }
 
     // Discord's CHANNEL_ACK marks the channel read to latest, clearing the mention badge.
     // Resolved by source string, so it may be the function itself or a module exposing .ack.
