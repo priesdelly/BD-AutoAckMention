@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@types/betterdiscord": "github:zerthox/betterdiscord-types"
+  }
+}
